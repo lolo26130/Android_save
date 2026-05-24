@@ -1,0 +1,36 @@
+[project]
+name = "android-save"
+version = "0.1.0"
+description = "Sauvegarde de fichiers Android via ADB avec interface TUI"
+readme = "README.md"
+authors = [
+    { name = "Laurent", email = "lolo.pupub@free.fr" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "textual>=0.80.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+android-save = "android_save.__main__:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-mock>=3.12.0",
+]
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=2.0.0",
+    "sphinx-autodoc-typehints>=1.25.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
