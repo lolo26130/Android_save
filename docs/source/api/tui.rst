@@ -28,6 +28,23 @@ Panneaux d'arborescence
 .. autoclass:: android_save.tui.panels.FileTreePanel
    :members:
 
+Widget des couples de dossiers
+-------------------------------
+
+.. automodule:: android_save.tui.pairs
+   :members:
+   :show-inheritance:
+
+.. autoclass:: android_save.tui.pairs.FolderPairsPanel
+   :members:
+   :special-members: __init__
+
+.. autoclass:: android_save.tui.pairs.PairStatus
+   :members:
+
+.. autoclass:: android_save.tui.pairs.PairState
+   :members:
+
 Barre de progression
 ---------------------
 
@@ -40,10 +57,15 @@ Barre de progression
 
 .. seealso::
 
+   :mod:`android_save.config`
+      Fournit :class:`~android_save.config.FolderPair` consommé par
+      :class:`~android_save.tui.pairs.FolderPairsPanel` et
+      :class:`~android_save.tui.app.AndroidSaveApp`.
+
    :mod:`android_save.adb`
       Fournit :class:`~android_save.adb.AdbClient` et
       :class:`~android_save.adb.PullProgress` utilisés dans
-      :meth:`~android_save.tui.app.AndroidSaveApp.start_transfer`.
+      :meth:`~android_save.tui.app.AndroidSaveApp.sync_all_pairs`.
 
    :mod:`android_save.sync`
       Fournit :class:`~android_save.sync.SyncPlan` affiché dans

@@ -14,6 +14,7 @@ Sauvegarde de fichiers personnels Android via ADB avec interface TUI.
    :maxdepth: 3
    :caption: API de référence
 
+   api/config
    api/adb
    api/sync
    api/tui

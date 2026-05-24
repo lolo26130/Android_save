@@ -1,0 +1,66 @@
+# android_save.toml — OnePlus A5010
+# Supprimez ou commentez (#) les dossiers que vous ne souhaitez pas sauvegarder.
+
+# [device]
+# serial = ""   # décommentez si vous avez plusieurs appareils connectés
+
+[[sync]]
+remote = "/sdcard/DCIM"
+local  = "~/android_backup/DCIM"
+label  = "Photos / Vidéos (DCIM)"
+
+[[sync]]
+remote = "/sdcard/Documents"
+local  = "~/android_backup/Documents"
+label  = "Documents"
+
+[[sync]]
+remote = "/sdcard/Download"
+local  = "~/android_backup/Download"
+label  = "Téléchargements"
+
+[[sync]]
+remote = "/sdcard/EnRecipes_recettes"
+local  = "~/android_backup/EnRecipes_recettes"
+label  = "Recettes (EnRecipes)"
+
+[[sync]]
+remote = "/sdcard/GPS"
+local  = "~/android_backup/GPS"
+label  = "GPS"
+
+[[sync]]
+remote = "/sdcard/Librera"
+local  = "~/android_backup/Librera"
+label  = "Librera (livres)"
+
+[[sync]]
+remote = "/sdcard/Movies"
+local  = "~/android_backup/Movies"
+label  = "Films"
+
+[[sync]]
+remote = "/sdcard/PenAndPDFNotes"
+local  = "~/android_backup/PenAndPDFNotes"
+label  = "Notes (PenAndPDF)"
+
+[[sync]]
+remote = "/sdcard/Pictures"
+local  = "~/android_backup/Pictures"
+label  = "Images"
+
+[[sync]]
+remote = "/sdcard/Recordings"
+local  = "~/android_backup/Recordings"
+label  = "Enregistrements"
+
+[[sync]]
+remote = "/sdcard/Ringtones"
+local  = "~/android_backup/Ringtones"
+label  = "Sonneries"
+
+[[sync]]
+remote = "/sdcard/Téléchargement newpipe"
+local  = "~/android_backup/Telechargement_newpipe"
+label  = "Téléchargements NewPipe"
+
