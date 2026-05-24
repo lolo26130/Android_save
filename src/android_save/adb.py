@@ -111,9 +111,15 @@ class AdbClient:
         devices = client.list_devices()
     """
 
-    def __init__(self, adb_path: str = "adb", timeout: int = 30) -> None:
+    def __init__(
+        self,
+        adb_path: str = "adb",
+        timeout: int = 30,
+        pull_timeout: int | None = None,
+    ) -> None:
         self.adb_path = adb_path
         self.timeout = timeout
+        self.pull_timeout = pull_timeout  # None = pas de limite (fichiers volumineux)
         self._current_proc: subprocess.Popen | None = None
 
     def _run(self, *args: str, timeout: int | None = None) -> str:
@@ -284,11 +290,13 @@ class AdbClient:
         self._current_proc = proc
         try:
             try:
-                _stdout, stderr = proc.communicate(timeout=300)
+                _stdout, stderr = proc.communicate(timeout=self.pull_timeout)
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.communicate()
-                raise AdbError(f"Timeout sur le transfert: {remote_path}")
+                raise AdbError(
+                    f"Timeout ({self.pull_timeout}s) dépassé pour : {remote_path}"
+                )
         finally:
             self._current_proc = None
 

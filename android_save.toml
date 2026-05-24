@@ -4,11 +4,11 @@
 # [device]
 # serial = ""   # décommentez si vous avez plusieurs appareils connectés
 
-[[sync]]
-remote = "/sdcard/DCIM"
-local  = "~/Pictures/Photos/OnePlus5T/DCIM/"
-label  = "Photos / Vidéos (DCIM)"
-
+# [[sync]]
+# remote = "/sdcard/DCIM"
+# local  = "~/Pictures/Photos/OnePlus5T/DCIM/"
+# label  = "Photos / Vidéos (DCIM)"
+# 
 [[sync]]
 remote = "/sdcard/Documents"
 local  = "~/android_backup/Documents"

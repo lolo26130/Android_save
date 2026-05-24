@@ -20,6 +20,7 @@ graphique en mode terminal. L'interface s'organise en trois zones :
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import ClassVar
 
@@ -385,6 +386,13 @@ class AndroidSaveApp(App):
                     )
                     continue
 
+                # Index remote_path → mtime pour préserver les timestamps après copie
+                remote_to_mtime: dict[str, float] = {
+                    e.remote_file.path: e.remote_file.mtime
+                    for e in plan.entries.values()
+                    if e.remote_file and e.needs_transfer
+                }
+
                 # --- transfert ---
                 self.call_from_thread(
                     pairs_panel.set_status, idx, PairStatus.IN_PROGRESS,
@@ -433,6 +441,13 @@ class AndroidSaveApp(App):
                             self._log(f"[red]✗[/red] {remote} — {err}")
                     else:
                         files_done += 1
+                        # Préserver le timestamp du fichier source (adb pull ne le fait pas)
+                        mtime = remote_to_mtime.get(remote)
+                        if mtime is not None:
+                            try:
+                                os.utime(str(local), (mtime, mtime))
+                            except OSError:
+                                pass
 
                 self.call_from_thread(progress_widget.hide_skip_button)
                 status = PairStatus.ERROR if errors else PairStatus.DONE
