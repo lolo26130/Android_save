@@ -215,17 +215,7 @@ class AndroidSaveApp(App):
         remote_panel = self.query_one("#panel_remote", FileTreePanel)
         remote_panel.scroll_to_path(rel_path)
 
-    def on_file_tree_panel_scrolled(self, event: FileTreePanel.Scrolled) -> None:
-        """Synchronise le défilement vertical des deux panneaux.
 
-        Répercute la position ``scroll_y`` du panneau source sur l'autre panneau.
-        La tolérance de 0.5 px évite la boucle infinie A→B→A.
-
-        :param event: Message :class:`~android_save.tui.panels.FileTreePanel.Scrolled`.
-        """
-        for panel in self.query(FileTreePanel):
-            if panel is not event.panel and abs(panel.scroll_y - event.y) > 0.5:
-                panel.scroll_to(y=event.y, animate=False)
 
     @work(thread=True)
     def detect_device(self) -> None:

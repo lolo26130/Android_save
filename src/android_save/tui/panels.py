@@ -27,7 +27,6 @@ from __future__ import annotations
 from typing import Literal
 
 from rich.text import Text
-from textual.message import Message
 from textual.widgets import Tree
 from textual.widgets.tree import TreeNode
 
@@ -68,27 +67,11 @@ class FileTreePanel(Tree):
         panel.load_plan(plan, side="remote")
     """
 
-    class Scrolled(Message):
-        """Émis quand la position de défilement verticale change.
-
-        :param panel: Le panneau source de l'événement.
-        :param y: Nouvelle position verticale en pixels.
-        """
-
-        def __init__(self, panel: "FileTreePanel", y: float) -> None:
-            super().__init__()
-            self.panel = panel
-            self.y = y
-
     def __init__(self, title: str, **kwargs) -> None:
         super().__init__(title, **kwargs)
         self.guide_depth = 3
         self.show_root = True
         self._path_to_line: dict[str, int] = {}
-
-    def watch_scroll_y(self, y: float) -> None:
-        """Publie :class:`Scrolled` à chaque défilement vertical."""
-        self.post_message(self.Scrolled(self, y))
 
     def scroll_to_path(self, rel_path: str) -> None:
         """Fait défiler le panneau pour centrer verticalement le fichier indiqué.
