@@ -114,6 +114,7 @@ class AdbClient:
     def __init__(self, adb_path: str = "adb", timeout: int = 30) -> None:
         self.adb_path = adb_path
         self.timeout = timeout
+        self._current_proc: subprocess.Popen | None = None
 
     def _run(self, *args: str, timeout: int | None = None) -> str:
         """Exécute une commande ADB et retourne la sortie.
@@ -236,6 +237,15 @@ class AdbClient:
                 continue
         return files
 
+    def skip_current(self) -> None:
+        """Interrompt le fichier en cours de transfert (tue le sous-processus).
+
+        Sans effet si aucun transfert n'est actif.
+        """
+        proc = self._current_proc
+        if proc is not None:
+            proc.kill()
+
     def pull(
         self,
         device: Device,
@@ -247,12 +257,13 @@ class AdbClient:
 
         Crée les répertoires parents si nécessaire. Appelle ``on_progress``
         à la fin du transfert (ADB ne fournit pas de progression intermédiaire).
+        Le transfert peut être interrompu via :meth:`skip_current`.
 
         :param device: Appareil Android source.
         :param remote_path: Chemin du fichier sur le téléphone.
         :param local_path: Destination sur le PC.
         :param on_progress: Callback optionnel appelé en fin de transfert.
-        :raises AdbError: Si ``adb pull`` échoue.
+        :raises AdbError: Si ``adb pull`` échoue ou est interrompu.
 
         Exemple::
 
@@ -264,15 +275,34 @@ class AdbClient:
         local = Path(local_path)
         local.parent.mkdir(parents=True, exist_ok=True)
 
-        self._run("-s", device.serial, "pull", remote_path, str(local), timeout=300)
+        cmd = [self.adb_path, "-s", device.serial, "pull", remote_path, str(local)]
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except FileNotFoundError:
+            raise AdbError(f"adb introuvable: {self.adb_path}")
+
+        self._current_proc = proc
+        try:
+            try:
+                _stdout, stderr = proc.communicate(timeout=300)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                raise AdbError(f"Timeout sur le transfert: {remote_path}")
+        finally:
+            self._current_proc = None
+
+        if proc.returncode != 0:
+            raise AdbError(stderr.strip(), returncode=proc.returncode)
 
         if on_progress and local.exists():
+            size = local.stat().st_size
             on_progress(
                 PullProgress(
                     remote_path=remote_path,
                     local_path=str(local),
-                    bytes_transferred=local.stat().st_size,
-                    total_bytes=local.stat().st_size,
+                    bytes_transferred=size,
+                    total_bytes=size,
                 )
             )
 

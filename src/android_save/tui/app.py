@@ -111,6 +111,7 @@ class AndroidSaveApp(App):
 
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("s", "start_sync", "Synchroniser", show=True),
+        Binding("c", "toggle_copy_only", "Copies seules", show=True),
         Binding("r", "refresh_inventory", "Actualiser", show=True),
         Binding("q", "quit", "Quitter", show=True),
     ]
@@ -123,6 +124,7 @@ class AndroidSaveApp(App):
     #main_container { height: 1fr; }
     #panels { width: 1fr; height: 1fr; }
     #legend { height: 1; padding: 0 1; background: $surface; }
+    #mode_bar { height: 1; padding: 0 1; }
     #log_panel { height: 8; border-top: solid $accent; }
     FileTreePanel {
         width: 1fr; height: 1fr; border: solid $border; padding: 0 1;
@@ -135,6 +137,7 @@ class AndroidSaveApp(App):
         pairs: list[FolderPair] | None = None,
         serial: str | None = None,
         adb_client: AdbClient | None = None,
+        copy_only: bool = False,
         # rétrocompatibilité
         remote_root: str = "/sdcard",
         local_root: str = str(Path.home() / "android_backup"),
@@ -150,6 +153,8 @@ class AndroidSaveApp(App):
         self._plans: list[SyncPlan | None] = [None] * len(self._pairs)
         self._current_idx: int = 0
         self._syncing = False
+        self._copy_only: bool = copy_only
+        self._skip_current: bool = False
 
     # ------------------------------------------------------------------ layout
 
@@ -170,6 +175,7 @@ class AndroidSaveApp(App):
                 f"[{s[FileStatus.ORPHAN]}]? orphelin (local seulement)[/]",
                 id="legend",
             )
+            yield Static("", id="mode_bar", markup=True)
             yield FolderPairsPanel(self._pairs, id="pairs_panel")
             yield RichLog(id="log_panel", max_lines=200, markup=True)
         yield TransferProgress(id="transfer_progress")
@@ -198,12 +204,14 @@ class AndroidSaveApp(App):
             )
             self._log(f"Appareil trouvé : {device.model}")
             self.run_inventory(0)
-        except DeviceNotFoundError as exc:
-            self._log(f"[red]Erreur : {exc}[/red]")
+        except AdbError as exc:
+            self._log(f"[red]Erreur ADB : {exc}[/red]")
             self.call_from_thread(
                 self.query_one("#status_bar", Static).update,
                 f"Aucun appareil détecté ({exc})",
             )
+        except Exception as exc:
+            self._log(f"[red]Erreur inattendue : {exc}[/red]")
 
     # ---------------------------------------------------------------- inventory
 
@@ -222,8 +230,11 @@ class AndroidSaveApp(App):
         self._log(f"Inventaire de {pair.remote}…")
 
         self.call_from_thread(
-            self.query_one("#panel_local", FileTreePanel).set_border_title,
-            f"Backup → {pair.local}",
+            lambda: setattr(
+                self.query_one("#panel_local", FileTreePanel),
+                "border_title",
+                f"Backup → {pair.local}",
+            )
         )
 
         try:
@@ -255,6 +266,8 @@ class AndroidSaveApp(App):
             self.call_from_thread(self._refresh_panels, plan)
         except AdbError as exc:
             self._log(f"[red]Erreur ADB : {exc}[/red]")
+        except Exception as exc:
+            self._log(f"[red]Erreur inattendue (inventaire) : {exc}[/red]")
 
     def _refresh_panels(self, plan: SyncPlan) -> None:
         """Met à jour les deux panneaux (thread principal)."""
@@ -270,18 +283,39 @@ class AndroidSaveApp(App):
 
     # ------------------------------------------------------------------ sync
 
+    def on_transfer_progress_skip(self, _message: TransferProgress.Skip) -> None:
+        """Interruption du fichier en cours demandée par le bouton Stop."""
+        if self._syncing:
+            self._skip_current = True
+            self._adb.skip_current()
+
+    def action_toggle_copy_only(self) -> None:
+        """Action ``c`` : bascule le mode « copies seules » (sans mises à jour)."""
+        self._copy_only = not self._copy_only
+        if self._copy_only:
+            self.query_one("#mode_bar", Static).update(
+                "[bold #f1c40f]⚑ Mode : copies seules — les fichiers existants ne seront pas mis à jour[/]"
+            )
+            self._log("[#f1c40f]Mode copies seules activé[/]")
+        else:
+            self.query_one("#mode_bar", Static).update("")
+            self._log("[dim]Mode copies seules désactivé[/]")
+
     def action_start_sync(self) -> None:
         """Action ``s`` : calcule le total de tous les couples et demande confirmation."""
         if self._syncing:
             self._log("[yellow]Transfert déjà en cours[/yellow]")
             return
 
-        total_files = sum(
-            (p.to_copy_count + p.to_update_count)
-            for p in self._plans if p is not None
-        )
+        if self._copy_only:
+            total_files = sum(p.to_copy_count for p in self._plans if p is not None)
+        else:
+            total_files = sum(
+                (p.to_copy_count + p.to_update_count)
+                for p in self._plans if p is not None
+            )
         total_bytes = sum(
-            p.total_bytes_to_transfer for p in self._plans if p is not None
+            p.bytes_to_transfer(self._copy_only) for p in self._plans if p is not None
         )
         uninventoried = sum(1 for p in self._plans if p is None)
 
@@ -300,6 +334,8 @@ class AndroidSaveApp(App):
             parts.append(format_size(total_bytes))
         if uninventoried:
             parts.append(f"+ {uninventoried} couple(s) à inventorier")
+        if self._copy_only:
+            parts.append("copies seules")
         msg = "Synchroniser " + ", ".join(parts) + " ?"
         self.push_screen(ConfirmScreen(msg), self._on_confirm)
 
@@ -321,91 +357,106 @@ class AndroidSaveApp(App):
         if not self._device:
             return
         self._syncing = True
-        progress_widget = self.query_one("#transfer_progress", TransferProgress)
-        pairs_panel = self.query_one("#pairs_panel", FolderPairsPanel)
+        try:
+            progress_widget = self.query_one("#transfer_progress", TransferProgress)
+            pairs_panel = self.query_one("#pairs_panel", FolderPairsPanel)
 
-        for idx, pair in enumerate(self._pairs):
-            # --- inventaire si nécessaire ---
-            if self._plans[idx] is None:
-                self._log(f"Inventaire de {pair.remote}…")
-                try:
-                    remote_files = self._adb.list_files(self._device, pair.remote)
-                    engine = SyncEngine(pair.remote, pair.local)
-                    self._plans[idx] = engine.compute(remote_files)
-                    self.call_from_thread(self._refresh_panels, self._plans[idx])
-                except AdbError as exc:
-                    self._log(f"[red]Erreur inventaire {pair.display} : {exc}[/red]")
-                    self.call_from_thread(pairs_panel.set_status, idx, PairStatus.ERROR)
+            for idx, pair in enumerate(self._pairs):
+                # --- inventaire si nécessaire ---
+                if self._plans[idx] is None:
+                    self._log(f"Inventaire de {pair.remote}…")
+                    try:
+                        remote_files = self._adb.list_files(self._device, pair.remote)
+                        engine = SyncEngine(pair.remote, pair.local)
+                        self._plans[idx] = engine.compute(remote_files)
+                        self.call_from_thread(self._refresh_panels, self._plans[idx])
+                    except AdbError as exc:
+                        self._log(f"[red]Erreur inventaire {pair.display} : {exc}[/red]")
+                        self.call_from_thread(pairs_panel.set_status, idx, PairStatus.ERROR)
+                        continue
+
+                plan = self._plans[idx]
+                transfers = plan.transfers(copy_only=self._copy_only)
+                if not transfers:
+                    self._log(f"[dim]{pair.display} — déjà à jour[/]")
+                    self.call_from_thread(
+                        pairs_panel.set_status, idx, PairStatus.DONE,
+                        0, 0,
+                    )
                     continue
 
-            plan = self._plans[idx]
-            transfers = plan.transfers()
-            if not transfers:
-                self._log(f"[dim]{pair.display} — déjà à jour[/]")
+                # --- transfert ---
                 self.call_from_thread(
-                    pairs_panel.set_status, idx, PairStatus.DONE,
-                    0, 0,
+                    pairs_panel.set_status, idx, PairStatus.IN_PROGRESS,
+                    len(transfers), 0,
                 )
-                continue
+                self.call_from_thread(self._refresh_panels, plan)
+                pair_bytes = plan.bytes_to_transfer(self._copy_only)
+                self._log(
+                    f"[{STATUS_STYLE[FileStatus.TO_COPY]}]▶[/] "
+                    f"{pair.display} — {len(transfers)} fichier(s) "
+                    f"({format_size(pair_bytes)})"
+                )
+                self.call_from_thread(progress_widget.reset, pair_bytes)
 
-            # --- transfert ---
-            self.call_from_thread(
-                pairs_panel.set_status, idx, PairStatus.IN_PROGRESS,
-                len(transfers), 0,
-            )
-            self.call_from_thread(self._refresh_panels, plan)
-            self._log(
-                f"[{STATUS_STYLE[FileStatus.TO_COPY]}]▶[/] "
-                f"{pair.display} — {len(transfers)} fichier(s) "
-                f"({format_size(plan.total_bytes_to_transfer)})"
-            )
-            self.call_from_thread(
-                progress_widget.reset, plan.total_bytes_to_transfer
-            )
+                errors: list[str] = []
+                skipped: int = 0
+                cumulative_bytes = 0
+                files_done = 0
 
-            errors: list[str] = []
-            cumulative_bytes = 0
-            files_done = 0
+                def on_progress(p: PullProgress, index: int, _total: int) -> None:
+                    nonlocal cumulative_bytes
+                    cumulative_bytes += p.bytes_transferred
+                    self.call_from_thread(
+                        progress_widget.update_transfer,
+                        current=index,
+                        total=len(transfers),
+                        current_file=p.remote_path,
+                        cumulative_bytes=cumulative_bytes,
+                        file_bytes=p.bytes_transferred,
+                    )
 
-            def on_progress(p: PullProgress, index: int, _total: int) -> None:
-                nonlocal cumulative_bytes
-                cumulative_bytes += p.bytes_transferred
+                for remote, local, err in self._adb.pull_batch(
+                    self._device, transfers, on_progress
+                ):
+                    if err:
+                        if self._skip_current:
+                            self._skip_current = False
+                            skipped += 1
+                            self._log(f"[#f1c40f]⏭ Passé :[/] {Path(remote).name}")
+                            try:
+                                Path(str(local)).unlink(missing_ok=True)
+                            except Exception:
+                                pass
+                        else:
+                            errors.append(str(err))
+                            self._log(f"[red]✗[/red] {remote} — {err}")
+                    else:
+                        files_done += 1
+
+                self.call_from_thread(progress_widget.hide_skip_button)
+                status = PairStatus.ERROR if errors else PairStatus.DONE
                 self.call_from_thread(
-                    progress_widget.update_transfer,
-                    current=index,
-                    total=len(transfers),
-                    current_file=p.remote_path,
-                    cumulative_bytes=cumulative_bytes,
-                    file_bytes=p.bytes_transferred,
+                    pairs_panel.set_status, idx, status, len(transfers), files_done,
                 )
-
-            for remote, local, err in self._adb.pull_batch(
-                self._device, transfers, on_progress
-            ):
-                if err:
-                    errors.append(str(err))
-                    self._log(f"[red]✗[/red] {remote} — {err}")
+                if errors:
+                    self._log(
+                        f"[red]{pair.display} — {len(errors)} erreur(s)[/red]"
+                    )
                 else:
-                    files_done += 1
+                    msg = f"[{STATUS_STYLE[FileStatus.TO_COPY]}]✓[/] {pair.display} — terminé"
+                    if skipped:
+                        msg += f" ([#f1c40f]{skipped} passé(s)[/])"
+                    self._log(msg)
+                # invalide le plan pour forcer un ré-inventaire au prochain 'r'
+                self._plans[idx] = None
 
-            status = PairStatus.ERROR if errors else PairStatus.DONE
-            self.call_from_thread(
-                pairs_panel.set_status, idx, status, len(transfers), files_done,
-            )
-            if errors:
-                self._log(
-                    f"[red]{pair.display} — {len(errors)} erreur(s)[/red]"
-                )
-            else:
-                self._log(
-                    f"[{STATUS_STYLE[FileStatus.TO_COPY]}]✓[/] "
-                    f"{pair.display} — terminé"
-                )
-            # invalide le plan pour forcer un ré-inventaire au prochain 'r'
-            self._plans[idx] = None
-
-        self._syncing = False
-        self._log("[#2ecc71]Synchronisation complète[/]")
+            self._log("[#2ecc71]Synchronisation complète[/]")
+        except Exception as exc:
+            self._log(f"[red]Erreur inattendue (synchronisation) : {exc}[/red]")
+        finally:
+            self._syncing = False
+            self._skip_current = False
 
     # ------------------------------------------------------------------ log
 

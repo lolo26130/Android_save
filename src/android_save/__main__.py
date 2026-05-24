@@ -71,6 +71,12 @@ def _parse_args() -> argparse.Namespace:
         metavar="ID",
         help="Serial ADB de l'appareil à utiliser (optionnel)",
     )
+    parser.add_argument(
+        "--copy-only",
+        action="store_true",
+        default=False,
+        help="Copier uniquement les fichiers absents en local (ignorer les mises à jour)",
+    )
     return parser.parse_args()
 
 
@@ -117,7 +123,7 @@ def main() -> None:
             local=str(Path(args.local).expanduser()),
         )]
 
-    app = AndroidSaveApp(pairs=pairs, serial=serial, adb_client=AdbClient())
+    app = AndroidSaveApp(pairs=pairs, serial=serial, adb_client=AdbClient(), copy_only=args.copy_only)
     app.run()
 
 

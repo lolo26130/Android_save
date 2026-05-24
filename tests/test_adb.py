@@ -133,44 +133,59 @@ class TestListFiles:
         assert files == []
 
 
+def _mock_popen(mocker, returncode: int = 0, stderr: str = ""):
+    """Crée un mock subprocess.Popen retournant ``returncode`` et ``stderr``."""
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("", stderr)
+    mock_proc.returncode = returncode
+    return mocker.patch("subprocess.Popen", return_value=mock_proc)
+
+
 class TestPull:
-    def test_creates_parent_directories(self, client, tmp_path):
+    def test_creates_parent_directories(self, client, tmp_path, mocker):
         device = Device("ABC", "Pixel", "device")
         dest = tmp_path / "subdir" / "file.jpg"
+        _mock_popen(mocker)
+        client.pull(device, "/sdcard/file.jpg", dest)
+        assert dest.parent.exists()  # pull() crée le répertoire parent
 
-        with patch.object(client, "_run", return_value=""):
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(b"fake content")
-            client.pull(device, "/sdcard/file.jpg", dest)
-
-        assert dest.parent.exists()
-
-    def test_calls_on_progress_after_transfer(self, client, tmp_path):
+    def test_calls_on_progress_after_transfer(self, client, tmp_path, mocker):
         device = Device("ABC", "Pixel", "device")
         dest = tmp_path / "file.jpg"
         dest.write_bytes(b"x" * 100)
+        _mock_popen(mocker)
 
         progress_calls = []
 
         def on_prog(p: PullProgress) -> None:
             progress_calls.append(p)
 
-        with patch.object(client, "_run", return_value=""):
-            client.pull(device, "/sdcard/file.jpg", dest, on_prog)
+        client.pull(device, "/sdcard/file.jpg", dest, on_prog)
 
         assert len(progress_calls) == 1
         assert progress_calls[0].bytes_transferred == 100
 
-    def test_adb_error_propagates(self, client, tmp_path):
+    def test_adb_error_propagates(self, client, tmp_path, mocker):
         device = Device("ABC", "Pixel", "device")
         dest = tmp_path / "file.jpg"
-        with patch.object(client, "_run", side_effect=AdbError("permission denied")):
-            with pytest.raises(AdbError, match="permission denied"):
-                client.pull(device, "/sdcard/file.jpg", dest)
+        _mock_popen(mocker, returncode=1, stderr="permission denied")
+        with pytest.raises(AdbError, match="permission denied"):
+            client.pull(device, "/sdcard/file.jpg", dest)
+
+    def test_skip_current_kills_process(self, client, tmp_path, mocker):
+        device = Device("ABC", "Pixel", "device")
+        dest = tmp_path / "file.jpg"
+        mock_proc = MagicMock()
+        mock_proc.communicate.return_value = ("", "Killed")
+        mock_proc.returncode = -9
+        mocker.patch("subprocess.Popen", return_value=mock_proc)
+        client._current_proc = mock_proc
+        client.skip_current()
+        mock_proc.kill.assert_called_once()
 
 
 class TestPullBatch:
-    def test_yields_results_for_each_file(self, client, tmp_path):
+    def test_yields_results_for_each_file(self, client, tmp_path, mocker):
         device = Device("ABC", "Pixel", "device")
         files = [
             ("/sdcard/a.jpg", tmp_path / "a.jpg"),
@@ -179,13 +194,13 @@ class TestPullBatch:
         for _, local in files:
             Path(local).write_bytes(b"data")
 
-        with patch.object(client, "_run", return_value=""):
-            results = list(client.pull_batch(device, files))
+        _mock_popen(mocker)
+        results = list(client.pull_batch(device, files))
 
         assert len(results) == 2
         assert all(err is None for _, _, err in results)
 
-    def test_error_does_not_abort_batch(self, client, tmp_path):
+    def test_error_does_not_abort_batch(self, client, tmp_path, mocker):
         device = Device("ABC", "Pixel", "device")
         files = [
             ("/sdcard/ok.jpg", tmp_path / "ok.jpg"),
@@ -193,13 +208,22 @@ class TestPullBatch:
         ]
         (tmp_path / "ok.jpg").write_bytes(b"data")
 
-        def _run_side(*args, **kwargs):
-            if "fail.jpg" in str(args):
-                raise AdbError("échec")
-            return ""
+        call_count = 0
 
-        with patch.object(client, "_run", side_effect=_run_side):
-            results = list(client.pull_batch(device, files))
+        def popen_side(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            mock_proc = MagicMock()
+            if "fail.jpg" in str(args):
+                mock_proc.communicate.return_value = ("", "échec")
+                mock_proc.returncode = 1
+            else:
+                mock_proc.communicate.return_value = ("", "")
+                mock_proc.returncode = 0
+            return mock_proc
+
+        mocker.patch("subprocess.Popen", side_effect=popen_side)
+        results = list(client.pull_batch(device, files))
 
         errors = [err for _, _, err in results if err is not None]
         assert len(errors) == 1

@@ -123,14 +123,24 @@ class SyncPlan:
         """Nombre de fichiers orphelins (présents en local seulement)."""
         return sum(1 for e in self.entries.values() if e.status == FileStatus.ORPHAN)
 
+    def bytes_to_transfer(self, copy_only: bool = False) -> int:
+        """Volume total en octets à transférer selon le mode de copie.
+
+        :param copy_only: Si ``True``, compte uniquement les fichiers absents
+            en local (statut :attr:`~FileStatus.TO_COPY`).
+        :return: Nombre total d'octets.
+        """
+        statuses = {FileStatus.TO_COPY} if copy_only else {FileStatus.TO_COPY, FileStatus.TO_UPDATE}
+        return sum(
+            e.remote_size
+            for e in self.entries.values()
+            if e.status in statuses and e.remote_size is not None
+        )
+
     @property
     def total_bytes_to_transfer(self) -> int:
         """Volume total en octets à transférer (copies + mises à jour)."""
-        return sum(
-            e.remote_size or 0
-            for e in self.entries.values()
-            if e.needs_transfer and e.remote_size is not None
-        )
+        return self.bytes_to_transfer()
 
     def by_status(self, status: FileStatus) -> list[SyncEntry]:
         """Retourne les entrées filtrées par statut.
@@ -143,19 +153,24 @@ class SyncPlan:
             key=lambda e: e.relative_path,
         )
 
-    def transfers(self) -> list[tuple[str, str]]:
+    def transfers(self, copy_only: bool = False) -> list[tuple[str, str]]:
         """Retourne la liste des transferts à effectuer sous forme ``(remote, local)``.
 
+        :param copy_only: Si ``True``, seuls les fichiers absents en local sont
+            inclus (les mises à jour de fichiers existants sont ignorées).
         :return: Paires ``(chemin_absolu_remote, chemin_absolu_local)`` pour
             tous les fichiers nécessitant un transfert.
         """
-        result = []
+        statuses = {FileStatus.TO_COPY} if copy_only else {FileStatus.TO_COPY, FileStatus.TO_UPDATE}
         local_root = Path(self.local_root)
-        for entry in self.entries.values():
-            if entry.needs_transfer and entry.remote_file:
-                local_dest = str(local_root / entry.relative_path)
-                result.append((entry.remote_file.path, local_dest))
-        return sorted(result, key=lambda t: t[0])
+        return sorted(
+            [
+                (entry.remote_file.path, str(local_root / entry.relative_path))
+                for entry in self.entries.values()
+                if entry.remote_file and entry.status in statuses
+            ],
+            key=lambda t: t[0],
+        )
 
 
 @dataclass

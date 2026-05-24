@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import time
 
+from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal
+from textual.message import Message
 from textual.widget import Widget
-from textual.widgets import ProgressBar, Static
+from textual.widgets import Button, ProgressBar, Static
 
 from android_save.sync import format_size
 
@@ -36,6 +38,11 @@ def _fmt_speed(bytes_per_sec: float) -> str:
 
 class TransferProgress(Widget):
     """Barre de progression du transfert ADB avec affichage des vitesses.
+
+    .. attribute:: Skip
+
+        Message émis quand l'utilisateur appuie sur le bouton **Stop**.
+        L'application doit l'écouter pour interrompre le fichier en cours.
 
     Affiche trois lignes :
 
@@ -58,17 +65,21 @@ class TransferProgress(Widget):
         )
     """
 
+    class Skip(Message):
+        """Demande d'interrompre le fichier en cours de transfert."""
+
     DEFAULT_CSS = """
     TransferProgress {
-        height: 4;
+        height: auto;
         padding: 0 1;
         background: $panel;
     }
     TransferProgress #progress_row {
-        height: 1;
+        height: 3;
     }
     TransferProgress #progress_bar {
         width: 1fr;
+        height: 3;
     }
     TransferProgress #total_size {
         width: auto;
@@ -82,6 +93,12 @@ class TransferProgress(Widget):
         content-align: right middle;
         color: $text-muted;
         padding: 0 0 0 1;
+    }
+    TransferProgress #btn_skip {
+        width: auto;
+        min-width: 10;
+        margin: 0 0 0 1;
+        display: none;
     }
     TransferProgress #current_file {
         height: 1;
@@ -99,8 +116,14 @@ class TransferProgress(Widget):
             yield ProgressBar(total=100, show_eta=False, id="progress_bar")
             yield Static("", id="total_size")
             yield Static("", id="speed_stats")
+            yield Button("Stop", id="btn_skip", variant="warning")
         yield Static("", id="current_file")
         yield Static("", id="transfer_stats")
+
+    @on(Button.Pressed, "#btn_skip")
+    def on_skip_pressed(self) -> None:
+        """Émet :class:`Skip` pour demander l'interruption du fichier en cours."""
+        self.post_message(self.Skip())
 
     def reset(self, total_bytes: int = 0) -> None:
         """Remet la barre à zéro et affiche le volume total à transférer.
@@ -117,6 +140,11 @@ class TransferProgress(Widget):
         self.query_one("#speed_stats", Static).update("")
         self.query_one("#current_file", Static).update("")
         self.query_one("#transfer_stats", Static).update("")
+        self.query_one("#btn_skip", Button).display = True
+
+    def hide_skip_button(self) -> None:
+        """Masque le bouton Stop (appelé en fin de transfert)."""
+        self.query_one("#btn_skip", Button).display = False
 
     def update_transfer(
         self,

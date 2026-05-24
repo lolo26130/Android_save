@@ -16,12 +16,13 @@ Options de la ligne de commande
 
 .. code-block:: text
 
-    android-save [--file TOML] [--remote CHEMIN] [--local CHEMIN] [--serial ID]
+    android-save [--file TOML] [--remote CHEMIN] [--local CHEMIN] [--serial ID] [--copy-only]
 
     --file TOML       Fichier TOML définissant les couples de dossiers (recommandé)
     --remote CHEMIN   Répertoire source sur le téléphone (défaut: /sdcard)
     --local CHEMIN    Répertoire de backup local (défaut: ~/android_backup)
     --serial ID       Forcer un appareil spécifique (utile si plusieurs téléphones)
+    --copy-only       Copier uniquement les fichiers absents (ignorer les mises à jour)
 
 .. note::
     ``--remote`` et ``--local`` sont ignorés si ``--file`` est fourni.
@@ -38,6 +39,9 @@ Exemples::
 
     # Cibler un appareil précis avec un fichier de config
     android-save --file ~/android_save.toml --serial emulator-5554
+
+    # Copies seules (ne pas écraser les fichiers déjà présents en local)
+    android-save --file ~/android_save.toml --copy-only
 
 Fichier de configuration TOML
 ------------------------------
@@ -79,10 +83,27 @@ Interface TUI
      - Action
    * - ``s``
      - Lancer la synchronisation de tous les couples
+   * - ``c``
+     - Basculer le mode « copies seules » (désactive les mises à jour)
    * - ``r``
      - Actualiser l'inventaire du couple courant
    * - ``q``
      - Quitter
+
+Mode « copies seules »
+~~~~~~~~~~~~~~~~~~~~~~~
+
+La touche ``c`` (ou l'option ``--copy-only``) active un mode dans lequel seuls
+les fichiers **absents en local** sont copiés. Les fichiers déjà présents mais
+modifiés (statut ``~``) sont ignorés.
+
+Une bannière jaune s'affiche sous la légende pour rappeler que ce mode est actif :
+
+.. code-block:: text
+
+    ⚑ Mode : copies seules — les fichiers existants ne seront pas mis à jour
+
+Appuyez à nouveau sur ``c`` pour revenir au mode normal (copies + mises à jour).
 
 Panneau des couples de dossiers
 ---------------------------------
