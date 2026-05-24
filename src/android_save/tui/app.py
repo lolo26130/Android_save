@@ -200,6 +200,21 @@ class AndroidSaveApp(App):
         """Lance la détection de l'appareil au démarrage."""
         self.detect_device()
 
+    def on_transfer_progress_follow_file(self, event: TransferProgress.FollowFile) -> None:
+        """Centre les deux panneaux sur le fichier venant d'être transféré.
+
+        Calcule le chemin relatif depuis :attr:`remote_root`, puis appelle
+        :meth:`~android_save.tui.panels.FileTreePanel.scroll_to_path` sur le
+        panneau téléphone. Le panneau local suit via la synchronisation de scroll.
+
+        :param event: Message :class:`~android_save.tui.progress.TransferProgress.FollowFile`.
+        """
+        remote = event.remote_path
+        prefix = self.remote_root.rstrip("/") + "/"
+        rel_path = remote[len(prefix):] if remote.startswith(prefix) else remote
+        remote_panel = self.query_one("#panel_remote", FileTreePanel)
+        remote_panel.scroll_to_path(rel_path)
+
     def on_file_tree_panel_scrolled(self, event: FileTreePanel.Scrolled) -> None:
         """Synchronise le défilement vertical des deux panneaux.
 

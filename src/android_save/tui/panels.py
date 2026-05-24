@@ -84,25 +84,41 @@ class FileTreePanel(Tree):
         super().__init__(title, **kwargs)
         self.guide_depth = 3
         self.show_root = True
+        self._path_to_line: dict[str, int] = {}
 
     def watch_scroll_y(self, y: float) -> None:
         """Publie :class:`Scrolled` à chaque défilement vertical."""
         self.post_message(self.Scrolled(self, y))
 
+    def scroll_to_path(self, rel_path: str) -> None:
+        """Fait défiler le panneau pour centrer verticalement le fichier indiqué.
+
+        :param rel_path: Chemin relatif du fichier (clé de :attr:`_path_to_line`).
+        """
+        if rel_path not in self._path_to_line:
+            return
+        line = self._path_to_line[rel_path]
+        visible = self.scrollable_content_region.height
+        self.scroll_to(y=max(0, line - visible // 2), animate=False)
+
     def load_plan(self, plan: SyncPlan, side: Side) -> None:
         """Charge et affiche le plan de synchronisation.
 
         Construit l'arborescence en regroupant les entrées par répertoire.
-        Les dossiers sont automatiquement créés.
+        Les dossiers sont automatiquement créés. La position de chaque fichier
+        (en lignes depuis la racine) est mémorisée dans :attr:`_path_to_line`
+        pour le suivi automatique lors des transferts.
 
         :param plan: Plan calculé par :class:`~android_save.sync.SyncEngine`.
         :param side: ``"remote"`` pour le téléphone, ``"local"`` pour le backup.
         """
         self.clear()
+        self._path_to_line = {}
         root_label = plan.remote_root if side == "remote" else plan.local_root
         self.root.set_label(root_label)
 
         tree: dict[str, TreeNode] = {}
+        line = [1]  # ligne 0 = racine
 
         def get_node(dir_path: str) -> TreeNode:
             if dir_path in tree:
@@ -112,6 +128,7 @@ class FileTreePanel(Tree):
             parent = get_node(parent_path) if parent_path else self.root
             node = parent.add(parts[-1], expand=True)
             tree[dir_path] = node
+            line[0] += 1  # le nœud répertoire prend une ligne
             return node
 
         for entry in sorted(plan.entries.values(), key=lambda e: e.relative_path):
@@ -128,6 +145,8 @@ class FileTreePanel(Tree):
             label = self._make_label(entry, file_part, side)
             parent = get_node(dir_part) if dir_part else self.root
             parent.add_leaf(label)
+            self._path_to_line[entry.relative_path] = line[0]
+            line[0] += 1
 
     def _make_label(self, entry: SyncEntry, filename: str, side: Side) -> Text:
         """Construit le libellé coloré d'un fichier.

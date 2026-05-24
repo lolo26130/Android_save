@@ -19,8 +19,9 @@ import time
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
+from textual.message import Message
 from textual.widget import Widget
-from textual.widgets import ProgressBar, Static
+from textual.widgets import Button, ProgressBar, Static
 
 from android_save.sync import format_size
 
@@ -35,13 +36,17 @@ def _fmt_speed(bytes_per_sec: float) -> str:
 
 
 class TransferProgress(Widget):
-    """Barre de progression du transfert ADB avec affichage des vitesses.
+    """Barre de progression du transfert ADB avec affichage des vitesses et suivi.
 
     Affiche trois lignes :
 
-    1. Barre de progression + vitesse du fichier en cours et vitesse moyenne (à droite).
+    1. Barre de progression + vitesses à droite + bouton **Suivi**.
     2. Nom du fichier en cours de transfert.
     3. Compteur ``fichier X / N`` et volume transféré cumulé.
+
+    Quand le bouton **Suivi** est actif, émet :class:`FollowFile` après chaque
+    fichier afin que l'application puisse centrer les panneaux sur le fichier
+    en cours.
 
     :Example:
 
@@ -56,6 +61,16 @@ class TransferProgress(Widget):
             file_bytes=10_485_760,
         )
     """
+
+    class FollowFile(Message):
+        """Émis après chaque fichier transféré quand le suivi est actif.
+
+        :param remote_path: Chemin absolu du fichier sur le téléphone.
+        """
+
+        def __init__(self, remote_path: str) -> None:
+            super().__init__()
+            self.remote_path = remote_path
 
     DEFAULT_CSS = """
     TransferProgress {
@@ -76,6 +91,20 @@ class TransferProgress(Widget):
         color: $text-muted;
         padding: 0 0 0 1;
     }
+    TransferProgress #btn_follow {
+        width: auto;
+        min-width: 10;
+        height: 1;
+        border: none;
+        padding: 0 1;
+        margin: 0 0 0 1;
+        background: $surface;
+        color: $text-muted;
+    }
+    TransferProgress #btn_follow.active {
+        background: #2ecc71;
+        color: $background;
+    }
     TransferProgress #current_file {
         height: 1;
         color: $text-muted;
@@ -87,12 +116,30 @@ class TransferProgress(Widget):
     }
     """
 
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._follow_active = False
+
     def compose(self) -> ComposeResult:
         with Horizontal(id="progress_row"):
             yield ProgressBar(total=100, show_eta=False, id="progress_bar")
             yield Static("", id="speed_stats")
+            yield Button("○ Suivi", id="btn_follow")
         yield Static("", id="current_file")
         yield Static("", id="transfer_stats")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Bascule le mode suivi actif/inactif."""
+        if event.button.id != "btn_follow":
+            return
+        self._follow_active = not self._follow_active
+        btn = self.query_one("#btn_follow", Button)
+        if self._follow_active:
+            btn.label = "● Suivi"
+            btn.add_class("active")
+        else:
+            btn.label = "○ Suivi"
+            btn.remove_class("active")
 
     def reset(self) -> None:
         """Remet la barre de progression à zéro et réinitialise les chronomètres."""
@@ -143,6 +190,9 @@ class TransferProgress(Widget):
         )
         self.query_one("#speed_stats", Static).update(speed_text)
         self.query_one("#current_file", Static).update(current_file)
+
+        if self._follow_active and current_file:
+            self.post_message(self.FollowFile(current_file))
 
         if total > 0:
             self.query_one("#transfer_stats", Static).update(
