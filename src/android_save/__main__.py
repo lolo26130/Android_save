@@ -9,15 +9,30 @@ Usage::
     android-save [OPTIONS]
 
     Options :
-      --remote CHEMIN   Répertoire source sur le téléphone (défaut: /sdcard)
-      --local CHEMIN    Répertoire de backup local (défaut: ~/android_backup)
+      --file TOML       Fichier de configuration TOML (couples remote/local)
+      --remote CHEMIN   Répertoire source sur le téléphone (ignoré si --file)
+      --local CHEMIN    Répertoire de backup local (ignoré si --file)
       --serial ID       Forcer un appareil spécifique par son serial ADB
 
     Exemples ::
 
-        android-save
-        android-save --remote /sdcard/DCIM --local ~/photos_backup
-        android-save --serial emulator-5554
+        android-save --file ~/android_save.toml
+        android-save --remote /sdcard/DCIM --local ~/Photos_Android
+        android-save --serial emulator-5554 --file ~/android_save.toml
+
+Format du fichier TOML::
+
+    [device]
+    serial = "ABC123"   # optionnel
+
+    [[sync]]
+    remote = "/sdcard/DCIM"
+    local  = "~/Photos_Android"
+    label  = "Photos"
+
+    [[sync]]
+    remote = "/sdcard/Documents"
+    local  = "~/Documents_Android"
 """
 
 from __future__ import annotations
@@ -33,16 +48,22 @@ def _parse_args() -> argparse.Namespace:
         description="Sauvegarde de fichiers Android via ADB avec interface TUI.",
     )
     parser.add_argument(
+        "--file",
+        default=None,
+        metavar="TOML",
+        help="Fichier de configuration TOML définissant les couples de dossiers",
+    )
+    parser.add_argument(
         "--remote",
         default="/sdcard",
         metavar="CHEMIN",
-        help="Répertoire source sur le téléphone (défaut: /sdcard)",
+        help="Répertoire source sur le téléphone (défaut: /sdcard, ignoré si --file)",
     )
     parser.add_argument(
         "--local",
         default=str(Path.home() / "android_backup"),
         metavar="CHEMIN",
-        help="Répertoire de backup local (défaut: ~/android_backup)",
+        help="Répertoire de backup local (défaut: ~/android_backup, ignoré si --file)",
     )
     parser.add_argument(
         "--serial",
@@ -56,16 +77,18 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     """Lance l'application android-save.
 
-    Parse les arguments, instancie :class:`~android_save.adb.AdbClient`
-    et :class:`~android_save.tui.app.AndroidSaveApp`, puis démarre la boucle
+    Parse les arguments, construit la liste des couples de dossiers depuis
+    ``--file`` ou ``--remote``/``--local``, instancie
+    :class:`~android_save.tui.app.AndroidSaveApp` et démarre la boucle
     événementielle Textual.
 
-    :raises SystemExit: Si ADB n'est pas disponible sur le système.
+    :raises SystemExit: Si ADB est introuvable ou si le fichier de config est invalide.
     """
     args = _parse_args()
 
     try:
-        from android_save.adb import AdbClient, AdbError
+        from android_save.adb import AdbClient
+        from android_save.config import ConfigError, FolderPair, load_config
         from android_save.tui.app import AndroidSaveApp
     except ImportError as exc:
         print(f"Erreur d'import : {exc}", file=sys.stderr)
@@ -73,17 +96,28 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        adb = AdbClient()
-        adb._run("version")
+        AdbClient()._run("version")
     except Exception:
         print("Erreur : 'adb' introuvable. Installez android-tools-adb.", file=sys.stderr)
         sys.exit(1)
 
-    app = AndroidSaveApp(
-        remote_root=args.remote,
-        local_root=args.local,
-        adb_client=AdbClient(),
-    )
+    # Résolution des couples de dossiers
+    serial: str | None = args.serial
+    if args.file:
+        try:
+            cfg = load_config(args.file)
+            pairs = cfg.pairs
+            serial = serial or cfg.serial
+        except ConfigError as exc:
+            print(f"Erreur de configuration : {exc}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        pairs = [FolderPair(
+            remote=args.remote,
+            local=str(Path(args.local).expanduser()),
+        )]
+
+    app = AndroidSaveApp(pairs=pairs, serial=serial, adb_client=AdbClient())
     app.run()
 
 
