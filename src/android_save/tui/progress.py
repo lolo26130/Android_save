@@ -4,7 +4,7 @@ Widget de progression du transfert de fichiers.
 Ce module fournit :class:`TransferProgress`, un widget Textual affichant
 la progression globale du transfert en cours avec :
 
-- Une barre de progression animée avec vitesses à droite.
+- Une barre de progression animée avec volume cumulé / total et vitesses à droite.
 - Le nom du fichier en cours de transfert.
 - Le compteur de fichiers et volume transféré.
 
@@ -19,9 +19,8 @@ import time
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
-from textual.message import Message
 from textual.widget import Widget
-from textual.widgets import Button, ProgressBar, Static
+from textual.widgets import ProgressBar, Static
 
 from android_save.sync import format_size
 
@@ -36,23 +35,20 @@ def _fmt_speed(bytes_per_sec: float) -> str:
 
 
 class TransferProgress(Widget):
-    """Barre de progression du transfert ADB avec affichage des vitesses et suivi.
+    """Barre de progression du transfert ADB avec affichage des vitesses.
 
     Affiche trois lignes :
 
-    1. Barre de progression + vitesses à droite + bouton **Suivi**.
+    1. Barre de progression + ``X / total`` + vitesses (à droite).
     2. Nom du fichier en cours de transfert.
     3. Compteur ``fichier X / N`` et volume transféré cumulé.
-
-    Quand le bouton **Suivi** est actif, émet :class:`FollowFile` après chaque
-    fichier afin que l'application puisse centrer les panneaux sur le fichier
-    en cours.
 
     :Example:
 
     .. code-block:: python
 
         progress = TransferProgress()
+        progress.reset(total_bytes=31_000_000_000)
         progress.update_transfer(
             current=5,
             total=100,
@@ -61,16 +57,6 @@ class TransferProgress(Widget):
             file_bytes=10_485_760,
         )
     """
-
-    class FollowFile(Message):
-        """Émis après chaque fichier transféré quand le suivi est actif.
-
-        :param remote_path: Chemin absolu du fichier sur le téléphone.
-        """
-
-        def __init__(self, remote_path: str) -> None:
-            super().__init__()
-            self.remote_path = remote_path
 
     DEFAULT_CSS = """
     TransferProgress {
@@ -84,26 +70,18 @@ class TransferProgress(Widget):
     TransferProgress #progress_bar {
         width: 1fr;
     }
+    TransferProgress #total_size {
+        width: auto;
+        content-align: right middle;
+        color: $text-muted;
+        padding: 0 1;
+    }
     TransferProgress #speed_stats {
         width: auto;
         min-width: 36;
         content-align: right middle;
         color: $text-muted;
         padding: 0 0 0 1;
-    }
-    TransferProgress #btn_follow {
-        width: auto;
-        min-width: 10;
-        height: 1;
-        border: none;
-        padding: 0 1;
-        margin: 0 0 0 1;
-        background: $surface;
-        color: $text-muted;
-    }
-    TransferProgress #btn_follow.active {
-        background: #2ecc71;
-        color: $background;
     }
     TransferProgress #current_file {
         height: 1;
@@ -116,36 +94,26 @@ class TransferProgress(Widget):
     }
     """
 
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self._follow_active = False
-
     def compose(self) -> ComposeResult:
         with Horizontal(id="progress_row"):
             yield ProgressBar(total=100, show_eta=False, id="progress_bar")
+            yield Static("", id="total_size")
             yield Static("", id="speed_stats")
-            yield Button("○ Suivi", id="btn_follow")
         yield Static("", id="current_file")
         yield Static("", id="transfer_stats")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Bascule le mode suivi actif/inactif."""
-        if event.button.id != "btn_follow":
-            return
-        self._follow_active = not self._follow_active
-        btn = self.query_one("#btn_follow", Button)
-        if self._follow_active:
-            btn.label = "● Suivi"
-            btn.add_class("active")
-        else:
-            btn.label = "○ Suivi"
-            btn.remove_class("active")
+    def reset(self, total_bytes: int = 0) -> None:
+        """Remet la barre à zéro et affiche le volume total à transférer.
 
-    def reset(self) -> None:
-        """Remet la barre de progression à zéro et réinitialise les chronomètres."""
+        :param total_bytes: Volume total à transférer (affiché à droite de la barre).
+        """
         self._transfer_start: float = 0.0
         self._prev_update_time: float = 0.0
+        self._total_bytes = total_bytes
         self.query_one("#progress_bar", ProgressBar).progress = 0
+        self.query_one("#total_size", Static).update(
+            f"[dim]0 o / {format_size(total_bytes)}[/]" if total_bytes else ""
+        )
         self.query_one("#speed_stats", Static).update("")
         self.query_one("#current_file", Static).update("")
         self.query_one("#transfer_stats", Static).update("")
@@ -184,15 +152,16 @@ class TransferProgress(Widget):
 
         self._prev_update_time = now
 
-        speed_text = (
+        if getattr(self, "_total_bytes", 0):
+            self.query_one("#total_size", Static).update(
+                f"[dim]{format_size(cumulative_bytes)} / {format_size(self._total_bytes)}[/]"
+            )
+
+        self.query_one("#speed_stats", Static).update(
             f"[dim]fichier:[/] {_fmt_speed(file_speed)}  "
             f"[dim]moy.:[/] {_fmt_speed(avg_speed)}"
         )
-        self.query_one("#speed_stats", Static).update(speed_text)
         self.query_one("#current_file", Static).update(current_file)
-
-        if self._follow_active and current_file:
-            self.post_message(self.FollowFile(current_file))
 
         if total > 0:
             self.query_one("#transfer_stats", Static).update(
