@@ -128,3 +128,71 @@ def default_config_path() -> Path:
     :return: ``~/.config/android_save/android_save.toml``.
     """
     return Path.home() / ".config" / "android_save" / "android_save.toml"
+
+
+def read_backup_dir(search_dirs: list[Path] | None = None) -> Path | None:
+    """Cherche ``backup_dir.toml`` et retourne le répertoire de backup configuré.
+
+    Cherche dans l'ordre : répertoire courant, puis ``~/.config/android_save/``.
+
+    :param search_dirs: Répertoires de recherche (remplace les défauts si fourni).
+    :return: Chemin du répertoire de backup, ou ``None`` si introuvable.
+
+    Exemple::
+
+        backup_dir = read_backup_dir() or Path.home() / "android_backup"
+    """
+    if search_dirs is None:
+        search_dirs = [
+            Path.cwd(),
+            Path.home() / ".config" / "android_save",
+        ]
+    for d in search_dirs:
+        p = d / "backup_dir.toml"
+        if p.exists():
+            try:
+                with open(p, "rb") as fh:
+                    data = tomllib.load(fh)
+                raw = data.get("backup_dir", "").strip()
+                if raw:
+                    return Path(raw).expanduser()
+            except (tomllib.TOMLDecodeError, KeyError, OSError):
+                pass
+    return None
+
+
+def write_config(
+    path: Path,
+    pairs: list[FolderPair],
+    serial: str | None = None,
+) -> None:
+    """Écrit un fichier de configuration TOML.
+
+    Crée les répertoires parents si nécessaire.
+
+    :param path: Chemin de destination du fichier ``.toml``.
+    :param pairs: Liste des couples de dossiers à écrire.
+    :param serial: Serial ADB de l'appareil (optionnel, section ``[device]``).
+
+    Exemple::
+
+        write_config(
+            Path("~/android_backup/save_android_ABC123_todo.toml"),
+            pairs=[FolderPair("/sdcard/DCIM", "~/android_backup/DCIM", "Photos")],
+            serial="ABC123",
+        )
+    """
+    lines: list[str] = []
+    if serial:
+        lines.append("[device]")
+        lines.append(f'serial = "{serial}"')
+        lines.append("")
+    for pair in pairs:
+        lines.append("[[sync]]")
+        lines.append(f'remote = "{pair.remote}"')
+        lines.append(f'local  = "{pair.local}"')
+        if pair.label:
+            lines.append(f'label  = "{pair.label}"')
+        lines.append("")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")

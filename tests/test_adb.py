@@ -229,6 +229,36 @@ class TestPullBatch:
         assert len(errors) == 1
 
 
+class TestListTopDirs:
+    def test_returns_sorted_dirs(self, client):
+        device = Device("ABC", "Pixel", "device")
+        # ls -p output: directory names end with /
+        output = "WhatsApp/\nDCIM/\nDocuments/\n"
+        with patch.object(client, "_run", return_value=output):
+            dirs = client.list_top_dirs(device, "/sdcard")
+        assert dirs == ["/sdcard/DCIM", "/sdcard/Documents", "/sdcard/WhatsApp"]
+
+    def test_excludes_files(self, client):
+        device = Device("ABC", "Pixel", "device")
+        output = "DCIM/\nfile.txt\nWhatsApp/\n"
+        with patch.object(client, "_run", return_value=output):
+            dirs = client.list_top_dirs(device, "/sdcard")
+        assert dirs == ["/sdcard/DCIM", "/sdcard/WhatsApp"]
+
+    def test_empty_output(self, client):
+        device = Device("ABC", "Pixel", "device")
+        with patch.object(client, "_run", return_value=""):
+            dirs = client.list_top_dirs(device, "/sdcard")
+        assert dirs == []
+
+    def test_ignores_blank_lines(self, client):
+        device = Device("ABC", "Pixel", "device")
+        output = "\nDCIM/\n\nMusic/\n"
+        with patch.object(client, "_run", return_value=output):
+            dirs = client.list_top_dirs(device, "/sdcard")
+        assert len(dirs) == 2
+
+
 class TestPullProgress:
     def test_ratio_zero_when_no_total(self):
         p = PullProgress("/sdcard/f", "/backup/f", bytes_transferred=0, total_bytes=0)

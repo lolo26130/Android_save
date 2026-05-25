@@ -13,6 +13,8 @@ from android_save.config import (
     FolderPair,
     default_config_path,
     load_config,
+    read_backup_dir,
+    write_config,
 )
 
 
@@ -167,6 +169,91 @@ class TestConfigError:
         """)
         with pytest.raises(ConfigError):
             load_config(f)
+
+
+# ------------------------------------------------------------------ read_backup_dir
+
+class TestReadBackupDir:
+    def test_finds_backup_dir_toml_in_search_dir(self, tmp_path):
+        (tmp_path / "backup_dir.toml").write_text('backup_dir = "/my/backup"', encoding="utf-8")
+        result = read_backup_dir(search_dirs=[tmp_path])
+        assert result == Path("/my/backup")
+
+    def test_expanduser_applied(self, tmp_path):
+        (tmp_path / "backup_dir.toml").write_text('backup_dir = "~/backup"', encoding="utf-8")
+        result = read_backup_dir(search_dirs=[tmp_path])
+        assert result is not None
+        assert not str(result).startswith("~")
+
+    def test_returns_none_when_not_found(self, tmp_path):
+        result = read_backup_dir(search_dirs=[tmp_path])
+        assert result is None
+
+    def test_first_match_wins(self, tmp_path):
+        d1 = tmp_path / "d1"; d1.mkdir()
+        d2 = tmp_path / "d2"; d2.mkdir()
+        (d1 / "backup_dir.toml").write_text('backup_dir = "/first"', encoding="utf-8")
+        (d2 / "backup_dir.toml").write_text('backup_dir = "/second"', encoding="utf-8")
+        result = read_backup_dir(search_dirs=[d1, d2])
+        assert result == Path("/first")
+
+    def test_ignores_invalid_toml(self, tmp_path):
+        (tmp_path / "backup_dir.toml").write_text("[[[ invalid", encoding="utf-8")
+        result = read_backup_dir(search_dirs=[tmp_path])
+        assert result is None
+
+
+# ------------------------------------------------------------------ write_config
+
+class TestWriteConfig:
+    def test_writes_sync_entries(self, tmp_path):
+        pairs = [FolderPair("/sdcard/DCIM", "/backup/DCIM", "Photos")]
+        out = tmp_path / "out.toml"
+        write_config(out, pairs)
+        cfg = load_config(out)
+        assert len(cfg.pairs) == 1
+        assert cfg.pairs[0].remote == "/sdcard/DCIM"
+        assert cfg.pairs[0].local == "/backup/DCIM"
+        assert cfg.pairs[0].label == "Photos"
+
+    def test_writes_serial_when_given(self, tmp_path):
+        pairs = [FolderPair("/sdcard/DCIM", "/backup/DCIM")]
+        out = tmp_path / "out.toml"
+        write_config(out, pairs, serial="ABC123")
+        cfg = load_config(out)
+        assert cfg.serial == "ABC123"
+
+    def test_no_serial_section_when_absent(self, tmp_path):
+        pairs = [FolderPair("/sdcard/DCIM", "/backup/DCIM")]
+        out = tmp_path / "out.toml"
+        write_config(out, pairs)
+        assert "[device]" not in out.read_text()
+
+    def test_multiple_pairs_roundtrip(self, tmp_path):
+        pairs = [
+            FolderPair("/sdcard/DCIM", "/backup/DCIM", "Photos"),
+            FolderPair("/sdcard/WhatsApp", "/backup/WhatsApp", ""),
+        ]
+        out = tmp_path / "out.toml"
+        write_config(out, pairs)
+        cfg = load_config(out)
+        assert len(cfg.pairs) == 2
+        assert cfg.pairs[1].remote == "/sdcard/WhatsApp"
+
+    def test_creates_parent_directories(self, tmp_path):
+        pairs = [FolderPair("/sdcard/DCIM", "/backup/DCIM")]
+        out = tmp_path / "subdir" / "deep" / "out.toml"
+        write_config(out, pairs)
+        assert out.exists()
+
+    def test_overwrites_existing_file(self, tmp_path):
+        out = tmp_path / "out.toml"
+        pairs_v1 = [FolderPair("/sdcard/DCIM", "/backup/DCIM")]
+        write_config(out, pairs_v1)
+        pairs_v2 = [FolderPair("/sdcard/WhatsApp", "/backup/WhatsApp")]
+        write_config(out, pairs_v2)
+        cfg = load_config(out)
+        assert cfg.pairs[0].remote == "/sdcard/WhatsApp"
 
 
 # ------------------------------------------------------------------ misc

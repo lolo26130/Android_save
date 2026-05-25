@@ -15,10 +15,14 @@ Classes principales
 .. autoclass:: android_save.config.Config
    :members:
 
-Chargement
-----------
+Chargement et écriture
+-----------------------
 
 .. autofunction:: android_save.config.load_config
+
+.. autofunction:: android_save.config.write_config
+
+.. autofunction:: android_save.config.read_backup_dir
 
 .. autofunction:: android_save.config.default_config_path
 

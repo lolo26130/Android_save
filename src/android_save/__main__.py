@@ -1,38 +1,21 @@
 """
 Point d'entrée de l'application ``android-save``.
 
-Analyse les arguments de la ligne de commande et lance l'interface TUI
-:class:`~android_save.tui.app.AndroidSaveApp`.
+Flux de lancement :
+
+1. Lecture de ``backup_dir.toml`` (répertoire courant ou ``~/.config/android_save/``).
+2. Lancement de :class:`~android_save.tui.setup.SetupApp` : connexion ADB, sélection
+   de la source, liste cochable → génère ``save_android_{serial}_todo.toml``.
+3. Lancement de :class:`~android_save.tui.app.AndroidSaveApp` avec le fichier todo.
+
+Mode direct (bypass du setup) : utilisez ``--file`` pour passer un fichier TOML
+existant directement à l'interface principale.
 
 Usage::
 
-    android-save [OPTIONS]
-
-    Options :
-      --file TOML       Fichier de configuration TOML (couples remote/local)
-      --remote CHEMIN   Répertoire source sur le téléphone (ignoré si --file)
-      --local CHEMIN    Répertoire de backup local (ignoré si --file)
-      --serial ID       Forcer un appareil spécifique par son serial ADB
-
-    Exemples ::
-
-        android-save --file ~/android_save.toml
-        android-save --remote /sdcard/DCIM --local ~/Photos_Android
-        android-save --serial emulator-5554 --file ~/android_save.toml
-
-Format du fichier TOML::
-
-    [device]
-    serial = "ABC123"   # optionnel
-
-    [[sync]]
-    remote = "/sdcard/DCIM"
-    local  = "~/Photos_Android"
-    label  = "Photos"
-
-    [[sync]]
-    remote = "/sdcard/Documents"
-    local  = "~/Documents_Android"
+    android-save                          # flux setup → app (recommandé)
+    android-save --file ~/mon_config.toml # bypass setup, fichier direct
+    android-save --serial emulator-5554   # forcer un appareil spécifique
 """
 
 from __future__ import annotations
@@ -51,19 +34,7 @@ def _parse_args() -> argparse.Namespace:
         "--file",
         default=None,
         metavar="TOML",
-        help="Fichier de configuration TOML définissant les couples de dossiers",
-    )
-    parser.add_argument(
-        "--remote",
-        default="/sdcard",
-        metavar="CHEMIN",
-        help="Répertoire source sur le téléphone (défaut: /sdcard, ignoré si --file)",
-    )
-    parser.add_argument(
-        "--local",
-        default=str(Path.home() / "android_backup"),
-        metavar="CHEMIN",
-        help="Répertoire de backup local (défaut: ~/android_backup, ignoré si --file)",
+        help="Fichier TOML de configuration (bypass le setup interactif)",
     )
     parser.add_argument(
         "--serial",
@@ -72,10 +43,10 @@ def _parse_args() -> argparse.Namespace:
         help="Serial ADB de l'appareil à utiliser (optionnel)",
     )
     parser.add_argument(
-        "--copy-only",
+        "--no-copy-only",
         action="store_true",
         default=False,
-        help="Copier uniquement les fichiers absents en local (ignorer les mises à jour)",
+        help="Inclure les mises à jour (désactive le mode copies seules activé par défaut)",
     )
     return parser.parse_args()
 
@@ -83,22 +54,18 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     """Lance l'application android-save.
 
-    Parse les arguments, construit la liste des couples de dossiers depuis
-    ``--file`` ou ``--remote``/``--local``, instancie
-    :class:`~android_save.tui.app.AndroidSaveApp` et démarre la boucle
-    événementielle Textual.
-
     :raises SystemExit: Si ADB est introuvable ou si le fichier de config est invalide.
     """
     args = _parse_args()
 
     try:
         from android_save.adb import AdbClient
-        from android_save.config import ConfigError, FolderPair, load_config
+        from android_save.config import ConfigError, FolderPair, load_config, read_backup_dir
         from android_save.tui.app import AndroidSaveApp
+        from android_save.tui.setup import SetupApp
     except ImportError as exc:
         print(f"Erreur d'import : {exc}", file=sys.stderr)
-        print("Installez les dépendances : uv sync", file=sys.stderr)
+        print("Installez les dépendances : uv pip install -e '.[dev]'", file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -107,23 +74,53 @@ def main() -> None:
         print("Erreur : 'adb' introuvable. Installez android-tools-adb.", file=sys.stderr)
         sys.exit(1)
 
-    # Résolution des couples de dossiers
-    serial: str | None = args.serial
+    # ---------------------------------------------------------------- mode direct
+
     if args.file:
         try:
             cfg = load_config(args.file)
-            pairs = cfg.pairs
-            serial = serial or cfg.serial
         except ConfigError as exc:
             print(f"Erreur de configuration : {exc}", file=sys.stderr)
             sys.exit(1)
-    else:
-        pairs = [FolderPair(
-            remote=args.remote,
-            local=str(Path(args.local).expanduser()),
-        )]
+        app = AndroidSaveApp(
+            pairs=cfg.pairs,
+            serial=args.serial or cfg.serial,
+            adb_client=AdbClient(),
+            copy_only=not args.no_copy_only,
+        )
+        app.run()
+        return
 
-    app = AndroidSaveApp(pairs=pairs, serial=serial, adb_client=AdbClient(), copy_only=args.copy_only)
+    # ---------------------------------------------------------------- flux setup
+
+    backup_dir = read_backup_dir()
+    if backup_dir is None:
+        backup_dir = Path.home() / "android_backup"
+        print(
+            f"backup_dir.toml introuvable — utilisation de {backup_dir}",
+            file=sys.stderr,
+        )
+
+    setup = SetupApp(backup_dir=backup_dir, serial_hint=args.serial)
+    result = setup.run()
+
+    if result is None:
+        return  # l'utilisateur a quitté le setup
+
+    todo_path, serial = result
+
+    try:
+        cfg = load_config(todo_path)
+    except ConfigError as exc:
+        print(f"Erreur de configuration (todo) : {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    app = AndroidSaveApp(
+        pairs=cfg.pairs,
+        serial=args.serial or serial,
+        adb_client=AdbClient(),
+        copy_only=not args.no_copy_only,
+    )
     app.run()
 
 

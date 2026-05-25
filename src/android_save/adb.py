@@ -243,6 +243,32 @@ class AdbClient:
                 continue
         return files
 
+    def list_top_dirs(self, device: Device, path: str = "/sdcard") -> list[str]:
+        """Liste les sous-répertoires de premier niveau d'un chemin Android.
+
+        Utilise ``ls -p`` (portable sur toutes les versions Android) pour lister
+        les entrées du répertoire et ne retient que celles qui se terminent par
+        ``/`` (indicateur de répertoire ajouté par ``ls -p``).
+
+        :param device: Appareil Android cible.
+        :param path: Chemin parent à scanner (défaut : ``/sdcard``).
+        :raises AdbError: En cas d'erreur ADB.
+        :return: Liste triée des chemins absolus des sous-répertoires.
+
+        Exemple::
+
+            dirs = client.list_top_dirs(device, "/sdcard")
+            # ["/sdcard/DCIM", "/sdcard/Documents", "/sdcard/WhatsApp", ...]
+        """
+        output = self._run("-s", device.serial, "shell", f"ls -p {path} 2>/dev/null", timeout=30)
+        base = path.rstrip("/")
+        dirs = []
+        for name in output.splitlines():
+            name = name.strip()
+            if name.endswith("/"):
+                dirs.append(f"{base}/{name.rstrip('/')}")
+        return sorted(dirs)
+
     def skip_current(self) -> None:
         """Interrompt le fichier en cours de transfert (tue le sous-processus).
 

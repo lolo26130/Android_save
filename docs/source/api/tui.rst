@@ -4,6 +4,17 @@ Sous-package ``android_save.tui``
 .. automodule:: android_save.tui
    :members:
 
+Interface de configuration
+---------------------------
+
+.. automodule:: android_save.tui.setup
+   :members:
+   :show-inheritance:
+
+.. autoclass:: android_save.tui.setup.SetupApp
+   :members:
+   :special-members: __init__
+
 Application principale
 -----------------------
 

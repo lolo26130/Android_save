@@ -1,0 +1,3 @@
+# Répertoire de travail d'android-save
+# Tous les fichiers .toml (from_android, user, todo) et les sauvegardes sont placés ici.
+backup_dir = "~/android_backup"

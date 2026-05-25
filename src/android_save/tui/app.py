@@ -90,6 +90,8 @@ class AndroidSaveApp(App):
     :param pairs: Couples de dossiers à synchroniser.
     :param serial: Serial ADB de l'appareil à cibler (optionnel).
     :param adb_client: Instance :class:`~android_save.adb.AdbClient` à utiliser.
+    :param copy_only: Si ``True`` (défaut), ne copie que les fichiers absents en local
+        et ignore les mises à jour. La touche ``c`` bascule ce mode pendant l'exécution.
 
     Raccourcis clavier :
 
@@ -138,7 +140,7 @@ class AndroidSaveApp(App):
         pairs: list[FolderPair] | None = None,
         serial: str | None = None,
         adb_client: AdbClient | None = None,
-        copy_only: bool = False,
+        copy_only: bool = True,
         # rétrocompatibilité
         remote_root: str = "/sdcard",
         local_root: str = str(Path.home() / "android_backup"),
@@ -184,6 +186,10 @@ class AndroidSaveApp(App):
 
     def on_mount(self) -> None:
         """Lance la détection de l'appareil au démarrage."""
+        if self._copy_only:
+            self.query_one("#mode_bar", Static).update(
+                "[bold #f1c40f]⚑ Mode : copies seules — les fichiers existants ne seront pas mis à jour[/]"
+            )
         self.detect_device()
 
     # ------------------------------------------------------------------ device
