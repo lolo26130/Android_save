@@ -26,11 +26,10 @@ intersphinx_mapping = {
 
 autosummary_generate = True
 autodoc_default_options = {
-    "members": True,
-    "undoc-members": False,
     "show-inheritance": True,
     "special-members": "__init__",
 }
+autodoc_inherit_docstrings = False
 autodoc_typehints = "description"
 napoleon_google_docstring = False
 napoleon_numpy_docstring = False

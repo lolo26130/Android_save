@@ -2,9 +2,6 @@ Module ``android_save.adb``
 ===========================
 
 .. automodule:: android_save.adb
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 Classes principales
 -------------------
@@ -20,6 +17,9 @@ Classes principales
    :members:
 
 .. autoclass:: android_save.adb.PullProgress
+   :members:
+
+.. autoclass:: android_save.adb.PushProgress
    :members:
 
 Exceptions
@@ -38,3 +38,7 @@ Exceptions
 
    :mod:`android_save.tui.app`
       Appelle :meth:`~android_save.adb.AdbClient.pull_batch` pour les transferts.
+
+   :mod:`android_save.push`
+      Utilise :meth:`~android_save.adb.AdbClient.push` et
+      :meth:`~android_save.adb.AdbClient.push_batch` pour l'envoi PC → Android.

@@ -2,7 +2,8 @@
 Wrapper ADB pour la communication avec un appareil Android.
 
 Ce module fournit une interface haut niveau autour de la commande ``adb``.
-Il gère la détection de l'appareil, l'inventaire des fichiers et le transfert.
+Il gère la détection de l'appareil, l'inventaire des fichiers et le transfert
+dans les deux sens (pull et push).
 
 .. note::
     Requiert ``adb`` installé et ``USB debugging`` activé sur le téléphone.
@@ -15,14 +16,16 @@ Exemple d'utilisation::
     device = client.get_device()
     files = client.list_files(device, "/sdcard/DCIM")
     client.pull(device, "/sdcard/DCIM/photo.jpg", "/backup/DCIM/photo.jpg")
+    client.push(device, "/backup/Music/track.mp3", "/sdcard/Music/track.mp3")
 """
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable, Iterator
 
 
@@ -56,7 +59,7 @@ class RemoteFile:
 
 @dataclass
 class PullProgress:
-    """Données de progression d'un transfert en cours.
+    """Données de progression d'un transfert téléphone → PC.
 
     :param remote_path: Chemin source sur le téléphone.
     :param local_path: Chemin destination sur le PC.
@@ -66,6 +69,32 @@ class PullProgress:
 
     remote_path: str
     local_path: str
+    bytes_transferred: int = 0
+    total_bytes: int = 0
+
+    @property
+    def ratio(self) -> float:
+        """Ratio de complétion entre 0.0 et 1.0.
+
+        :return: 0.0 si la taille totale est inconnue.
+        """
+        if self.total_bytes == 0:
+            return 0.0
+        return self.bytes_transferred / self.total_bytes
+
+
+@dataclass
+class PushProgress:
+    """Données de progression d'un transfert PC → téléphone.
+
+    :param local_path: Chemin source sur le PC.
+    :param remote_path: Chemin destination sur le téléphone.
+    :param bytes_transferred: Octets transférés.
+    :param total_bytes: Taille totale du fichier.
+    """
+
+    local_path: str
+    remote_path: str
     bytes_transferred: int = 0
     total_bytes: int = 0
 
@@ -394,3 +423,88 @@ class AdbClient:
             except DeviceNotFoundError:
                 time.sleep(2)
         raise DeviceNotFoundError(f"Aucun appareil après {timeout}s d'attente")
+
+    def push(
+        self,
+        device: Device,
+        local_path: str | Path,
+        remote_path: str,
+        on_progress: Callable[[PushProgress], None] | None = None,
+    ) -> None:
+        """Transfère un fichier local vers l'appareil.
+
+        Crée le répertoire parent distant si nécessaire.
+        Le transfert peut être interrompu via :meth:`skip_current`.
+
+        :param device: Appareil Android cible.
+        :param local_path: Chemin du fichier sur le PC.
+        :param remote_path: Destination sur le téléphone.
+        :param on_progress: Callback optionnel appelé en fin de transfert.
+        :raises AdbError: Si ``adb push`` échoue ou est interrompu.
+
+        Exemple::
+
+            client.push(device, "/backup/Music/track.mp3", "/sdcard/Music/track.mp3")
+        """
+        local = Path(local_path)
+        remote_parent = str(PurePosixPath(remote_path).parent)
+        self._run("-s", device.serial, "shell", f"mkdir -p {shlex.quote(remote_parent)}")
+
+        cmd = [self.adb_path, "-s", device.serial, "push", str(local), remote_path]
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except FileNotFoundError:
+            raise AdbError(f"adb introuvable: {self.adb_path}")
+
+        self._current_proc = proc
+        try:
+            try:
+                _stdout, stderr = proc.communicate(timeout=self.pull_timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                raise AdbError(f"Timeout dépassé pour : {local_path}")
+        finally:
+            self._current_proc = None
+
+        if proc.returncode != 0:
+            raise AdbError(stderr.strip(), returncode=proc.returncode)
+
+        if on_progress:
+            size = local.stat().st_size if local.exists() else 0
+            on_progress(PushProgress(str(local), remote_path, size, size))
+
+    def push_batch(
+        self,
+        device: Device,
+        transfers: list[tuple[str | Path, str]],
+        on_progress: Callable[[PushProgress, int, int], None] | None = None,
+    ) -> Iterator[tuple[str | Path, str, Exception | None]]:
+        """Transfère une liste de fichiers locaux vers l'appareil.
+
+        Générateur qui yield ``(local, remote, erreur)`` après chaque fichier.
+        Une erreur sur un fichier n'interrompt pas les suivants.
+
+        :param device: Appareil Android cible.
+        :param transfers: Liste de tuples ``(chemin_local, chemin_remote)``.
+        :param on_progress: Callback ``(progression, index, total)`` après chaque fichier.
+        :return: Itérateur de résultats par fichier.
+
+        Exemple::
+
+            for local, remote, err in client.push_batch(device, to_push):
+                if err:
+                    print(f"Erreur: {local} — {err}")
+        """
+        total = len(transfers)
+        for index, (local, remote) in enumerate(transfers):
+            error: Exception | None = None
+            try:
+                def _capture(p: PushProgress, _i: int = index) -> None:
+                    if on_progress:
+                        on_progress(p, _i + 1, total)
+
+                self.push(device, local, remote, _capture)
+            except AdbError as exc:
+                error = exc
+            yield local, remote, error

@@ -2,9 +2,6 @@ Module ``android_save.config``
 ==============================
 
 .. automodule:: android_save.config
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 Classes principales
 -------------------

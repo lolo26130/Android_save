@@ -2,9 +2,6 @@ Module ``android_save.sync``
 ============================
 
 .. automodule:: android_save.sync
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
 Moteur de synchronisation
 --------------------------

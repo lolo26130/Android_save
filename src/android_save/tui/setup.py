@@ -119,6 +119,7 @@ class SetupApp(App[tuple[Path, str] | None]):
     """
 
     def __init__(self, backup_dir: Path, serial_hint: str | None = None) -> None:
+        """Initialise l'écran avec le répertoire de travail et le serial éventuel."""
         super().__init__()
         self._backup_dir = backup_dir
         self._serial_hint = serial_hint

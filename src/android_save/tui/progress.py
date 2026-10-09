@@ -39,11 +39,6 @@ def _fmt_speed(bytes_per_sec: float) -> str:
 class TransferProgress(Widget):
     """Barre de progression du transfert ADB avec affichage des vitesses.
 
-    .. attribute:: Skip
-
-        Message émis quand l'utilisateur appuie sur le bouton **Stop**.
-        L'application doit l'écouter pour interrompre le fichier en cours.
-
     Affiche trois lignes :
 
     1. Barre de progression + ``X / total`` + vitesses (à droite).
@@ -66,7 +61,11 @@ class TransferProgress(Widget):
     """
 
     class Skip(Message):
-        """Demande d'interrompre le fichier en cours de transfert."""
+        """Demande d'interrompre le fichier en cours de transfert.
+
+        Émis quand l'utilisateur appuie sur le bouton **Stop** ; l'application
+        l'écoute pour interrompre le transfert en cours et passer au suivant.
+        """
 
     DEFAULT_CSS = """
     TransferProgress {
@@ -112,6 +111,7 @@ class TransferProgress(Widget):
     """
 
     def compose(self) -> ComposeResult:
+        """Construit la barre de progression, le bouton Stop et les statistiques."""
         with Horizontal(id="progress_row"):
             yield ProgressBar(total=100, show_eta=False, id="progress_bar")
             yield Static("", id="total_size")

@@ -65,6 +65,7 @@ class ConfirmScreen(ModalScreen[bool]):
         self._message = message
 
     def compose(self) -> ComposeResult:
+        """Construit le message et les boutons de confirmation."""
         with Container():
             yield Label(self._message)
             with Horizontal():
@@ -145,6 +146,7 @@ class AndroidSaveApp(App):
         remote_root: str = "/sdcard",
         local_root: str = str(Path.home() / "android_backup"),
     ) -> None:
+        """Initialise l'application avec les couples, l'appareil et le mode de copie."""
         super().__init__()
         if pairs:
             self._pairs = pairs
@@ -162,6 +164,7 @@ class AndroidSaveApp(App):
     # ------------------------------------------------------------------ layout
 
     def compose(self) -> ComposeResult:
+        """Construit l'interface principale (panneaux, légende, couples, log)."""
         yield Header()
         yield Static("En attente d'un appareil…", id="status_bar")
         with Vertical(id="main_container"):

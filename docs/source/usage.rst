@@ -185,3 +185,32 @@ Flux de travail typique
 5. Vérifier le plan dans les panneaux (vert = à copier, jaune = à mettre à jour).
 6. Appuyer sur ``s``, confirmer — tous les couples sont traités séquentiellement.
 7. Attendre la fin du transfert (la section « Traités » se remplit au fur et à mesure).
+
+Push PC → Android (``android-push``)
+------------------------------------
+
+La commande ``android-push`` effectue l'opération inverse : envoyer un répertoire
+local vers l'appareil. Seuls les fichiers absents sont transférés par défaut
+(``--update`` inclut les fichiers modifiés). Le répertoire distant est créé si
+nécessaire.
+
+.. code-block:: text
+
+    android-push <source> <destination> [--serial ID] [--dry-run] [--update]
+
+    source          Répertoire local à envoyer
+    destination     Chemin distant sur l'appareil (ex: /sdcard/Music)
+    --serial ID     Forcer un appareil spécifique
+    --dry-run       Simulation sans copie réelle
+    --update        Inclure les mises à jour (défaut : copies seules)
+
+Exemples ::
+
+    # Envoyer ~/Music vers /sdcard/Music (fichiers absents seulement)
+    android-push ~/Music /sdcard/Music
+
+    # Voir ce qui serait envoyé sans rien transférer
+    android-push ~/Music /sdcard/Music --dry-run
+
+    # Inclure les mises à jour (fichiers modifiés)
+    android-push ~/Music /sdcard/Music --update

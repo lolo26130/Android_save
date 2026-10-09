@@ -14,6 +14,7 @@ dependencies = [
 
 [project.scripts]
 android-save = "android_save.__main__:main"
+android-push = "android_save._push_main:main"
 
 [project.optional-dependencies]
 dev = [

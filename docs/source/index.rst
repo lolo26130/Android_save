@@ -1,7 +1,7 @@
 android-save
 ============
 
-Sauvegarde de fichiers personnels Android via ADB avec interface TUI.
+Sauvegarde et envoi de fichiers personnels entre Android et PC via ADB, avec interface TUI.
 
 .. toctree::
    :maxdepth: 2
@@ -17,6 +17,7 @@ Sauvegarde de fichiers personnels Android via ADB avec interface TUI.
    api/config
    api/adb
    api/sync
+   api/push
    api/tui
 
 Indices

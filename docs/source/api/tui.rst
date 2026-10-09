@@ -2,53 +2,49 @@ Sous-package ``android_save.tui``
 ==================================
 
 .. automodule:: android_save.tui
-   :members:
 
 Interface de configuration
 ---------------------------
 
 .. automodule:: android_save.tui.setup
-   :members:
-   :show-inheritance:
 
 .. autoclass:: android_save.tui.setup.SetupApp
    :members:
    :special-members: __init__
+   :exclude-members: BINDINGS, DEFAULT_CSS, TITLE
 
 Application principale
 -----------------------
 
 .. automodule:: android_save.tui.app
-   :members:
-   :show-inheritance:
 
 .. autoclass:: android_save.tui.app.AndroidSaveApp
    :members:
    :special-members: __init__
+   :exclude-members: BINDINGS, DEFAULT_CSS, TITLE
 
 .. autoclass:: android_save.tui.app.ConfirmScreen
    :members:
+   :exclude-members: DEFAULT_CSS
 
 Panneaux d'arborescence
 ------------------------
 
 .. automodule:: android_save.tui.panels
-   :members:
-   :show-inheritance:
 
 .. autoclass:: android_save.tui.panels.FileTreePanel
    :members:
+   :exclude-members: DEFAULT_CSS
 
 Widget des couples de dossiers
 -------------------------------
 
 .. automodule:: android_save.tui.pairs
-   :members:
-   :show-inheritance:
 
 .. autoclass:: android_save.tui.pairs.FolderPairsPanel
    :members:
    :special-members: __init__
+   :exclude-members: DEFAULT_CSS
 
 .. autoclass:: android_save.tui.pairs.PairStatus
    :members:
@@ -60,11 +56,10 @@ Barre de progression
 ---------------------
 
 .. automodule:: android_save.tui.progress
-   :members:
-   :show-inheritance:
 
 .. autoclass:: android_save.tui.progress.TransferProgress
    :members:
+   :exclude-members: DEFAULT_CSS
 
 .. seealso::
 

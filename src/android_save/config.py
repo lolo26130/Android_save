@@ -19,7 +19,7 @@ Format attendu::
     :func:`load_config` pour charger le fichier.
     :class:`FolderPair` pour la structure d'un couple de dossiers.
 
-Exemple de fichier ``android_save.toml``::
+Exemple de fichier TOML::
 
     [[sync]]
     remote = "/sdcard/DCIM"
@@ -89,7 +89,7 @@ def load_config(path: str | Path) -> Config:
 
     Exemple::
 
-        cfg = load_config("~/android_save.toml")
+        cfg = load_config("~/mon_config.toml")
         for pair in cfg.pairs:
             print(pair.remote, "→", pair.local)
     """

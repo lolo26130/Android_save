@@ -1,6 +1,6 @@
 # android-save
 
-Sauvegarde de fichiers Android vers le PC via **ADB** (USB debugging), avec une interface TUI interactive inspirée de FreeFileSync.
+Sauvegarde de fichiers Android vers le PC (et envoi PC → Android) via **ADB** (USB debugging), avec une interface TUI interactive inspirée de FreeFileSync.
 
 > FreeFileSync ne supporte pas MTP, et NFS/SSHFS est lent — `android-save` contourne les deux en passant par `adb pull` directement.
 
@@ -9,13 +9,14 @@ Sauvegarde de fichiers Android vers le PC via **ADB** (USB debugging), avec une 
 ## Fonctionnalités
 
 - **Vue deux panneaux** : téléphone à gauche, backup local à droite, avec code couleur par statut
-- **Multi-dossiers** : un fichier `.toml` définit autant de couples source/destination que nécessaire
+- **Multi-dossiers** : l'écran de configuration scanne le téléphone et génère la liste des dossiers — décochez ceux que vous ne voulez pas sauvegarder
 - **Copie incrémentale** : seuls les fichiers nouveaux ou modifiés sont transférés (comparaison taille + timestamp)
 - **Mode copies seules** (`c`) : ignore les mises à jour, ne copie que les fichiers absents en local
 - **Bouton Stop** : interrompt le fichier en cours de transfert, passe au suivant
 - **Progression détaillée** : barre de progression, volume cumulé / total, vitesse fichier et vitesse moyenne
 - **Timestamps préservés** : après chaque copie le timestamp local est aligné sur celui du téléphone — les fichiers déjà copiés restent « identiques » au scan suivant
 - **Robuste** : erreurs ADB gérées, transferts de très gros fichiers sans timeout
+- **Push PC → Android** (`android-push`) : envoi incrémental d'un répertoire local vers le téléphone
 
 ---
 
@@ -45,14 +46,34 @@ uv venv
 uv pip install -e ".[dev]"
 
 # Lancer
-uv run --no-project android-save --file android_save.toml
+uv run --no-project android-save
 ```
 
 ---
 
-## Configuration (fichier TOML)
+## Configuration
 
-Créez `~/android_save.toml` (ou copiez `android_save.toml` depuis le dépôt) :
+Au lancement, `android-save` cherche `backup_dir.toml` dans le répertoire courant,
+puis dans `~/.config/android_save/` :
+
+```toml
+# backup_dir.toml
+backup_dir = "~/android_backup"
+```
+
+Ce **répertoire de travail** contient les sauvegardes ainsi que les fichiers `.toml`
+générés par l'écran de configuration :
+
+| Fichier | Créé par | Contenu |
+|---------|----------|---------|
+| `save_android_{serial}_from_android.toml` | Scan du téléphone | Tous les dossiers de `/sdcard` |
+| `save_android_{serial}_user.toml` | À la main (facultatif) | Liste personnalisée avec labels |
+| `save_android_{serial}_todo.toml` | Bouton **Go** | Éléments cochés, passés à l'interface principale |
+
+Si `backup_dir.toml` est absent, `~/android_backup` est utilisé par défaut.
+
+Pour personnaliser la liste (labels, dossiers hors `/sdcard`) ou utiliser le mode
+direct `--file`, le format `[[sync]]` est utilisé :
 
 ```toml
 # [device]
@@ -81,17 +102,35 @@ Chaque `[[sync]]` définit un couple à synchroniser. Le champ `label` est optio
 ## Utilisation
 
 ```bash
-# Mode recommandé : fichier de configuration
-android-save --file ~/android_save.toml
+# Flux standard : écran de configuration puis interface principale
+android-save
 
-# Mode simple (un seul dossier)
-android-save --remote /sdcard/DCIM --local ~/Photos_Android
-
-# Ne copier que les fichiers absents (sans écraser les existants)
-android-save --file ~/android_save.toml --copy-only
+# Inclure les mises à jour (défaut : copies seules)
+android-save --no-copy-only
 
 # Cibler un appareil précis
-android-save --file ~/android_save.toml --serial emulator-5554
+android-save --serial emulator-5554
+
+# Bypass du setup avec un fichier TOML existant
+android-save --file ~/android_backup/save_android_ABC123_todo.toml
+```
+
+---
+
+## Push (PC → Android)
+
+`android-push` envoie un répertoire local vers le téléphone : seuls les fichiers
+absents (ou modifiés avec `--update`) sont transférés.
+
+```bash
+# Envoyer ~/Music vers /sdcard/Music (copies seules)
+android-push ~/Music /sdcard/Music
+
+# Simulation sans transfert réel
+android-push ~/Music /sdcard/Music --dry-run
+
+# Inclure les mises à jour
+android-push ~/Music /sdcard/Music --update
 ```
 
 ---
@@ -153,7 +192,7 @@ Pendant un transfert, le bouton **Stop** apparaît dans la barre de progression.
 
 1. Connecter le téléphone en USB
 2. Accepter la demande de débogage USB sur l'écran du téléphone
-3. Lancer `android-save --file ~/android_save.toml`
+3. Lancer `android-save` : dans l'écran de configuration, décocher les dossiers à exclure puis cliquer sur **Go**
 4. Patienter pendant l'inventaire automatique du premier couple
 5. Vérifier les panneaux (vert = à copier, jaune = à mettre à jour)
 6. Appuyer sur `s`, confirmer dans la boîte de dialogue
@@ -166,18 +205,21 @@ Pendant un transfert, le bouton **Stop** apparaît dans la barre de progression.
 ```
 android-save/
 ├── src/android_save/
-│   ├── adb.py          # Wrapper ADB (détection, inventaire, transfert)
-│   ├── sync.py         # Moteur de comparaison et plan de synchronisation
-│   ├── config.py       # Lecture du fichier TOML
+│   ├── adb.py          # Wrapper ADB (détection, inventaire, transferts pull/push)
+│   ├── sync.py         # Pull : comparaison et plan de synchronisation
+│   ├── push.py         # Push : comparaison et plan d'envoi
+│   ├── config.py       # Lecture/écriture des fichiers TOML
 │   ├── tui/
+│   │   ├── setup.py    # Écran de configuration (scan du téléphone, sélection)
 │   │   ├── app.py      # Application Textual principale
 │   │   ├── panels.py   # Panneaux d'arborescence colorés
 │   │   ├── pairs.py    # Widget de suivi des couples
 │   │   └── progress.py # Barre de progression avec vitesses
-│   └── __main__.py     # Point d'entrée CLI
-├── tests/              # 82 tests unitaires (pytest)
+│   ├── __main__.py     # Point d'entrée `android-save`
+│   └── _push_main.py   # Point d'entrée `android-push`
+├── tests/              # 112 tests unitaires (pytest)
 ├── docs/               # Documentation Sphinx
-├── android_save.toml   # Exemple de configuration (OnePlus A5010)
+├── backup_dir.toml     # Répertoire de travail (backups + fichiers générés)
 └── open_doc.sh         # Ouvre la documentation HTML locale
 ```
 
@@ -205,7 +247,7 @@ uv run --no-project pytest tests/ -v
 
 ## Limitations connues
 
-- La copie est **unidirectionnelle** : téléphone → PC uniquement (pas de push)
+- Chaque commande est **unidirectionnelle** : `android-save` (téléphone → PC), `android-push` (PC → téléphone)
 - Les fichiers orphelins (présents en local, absents du téléphone) sont signalés mais **jamais supprimés**
 - `adb pull` ne supporte pas la reprise sur interruption : un fichier interrompu est supprimé et devra être recopié intégralement
 - Requiert USB debugging — ne fonctionne pas en MTP

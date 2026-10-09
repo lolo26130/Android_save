@@ -92,10 +92,12 @@ class FolderPairsPanel(Widget):
     """
 
     def __init__(self, pairs: list[FolderPair], **kwargs) -> None:
+        """Initialise le panneau avec la liste des couples à suivre."""
         super().__init__(**kwargs)
         self._states: list[PairState] = [PairState(p) for p in pairs]
 
     def compose(self) -> ComposeResult:
+        """Crée le widget d'affichage, mis à jour via :meth:`set_status`."""
         yield Static("", id="pairs_content", markup=True)
 
     def on_mount(self) -> None:
